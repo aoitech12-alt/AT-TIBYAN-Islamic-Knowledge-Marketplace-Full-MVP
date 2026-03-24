@@ -7,6 +7,7 @@ import { useState, useEffect, useRef, useCallback, useMemo, Fragment } from "rea
 const SUPABASE_URL = "https://zqakvnmgmjtodicjxlju.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpxYWt2bm1nbWp0b2RpY2p4bGp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQzMTMxOTYsImV4cCI6MjA4OTg4OTE5Nn0.FKFl79HzrHVNwg_ONPHO21etQtJV2VfIEu8dUmNEB90";
 
+
 // ─── Platform Fee Config ─────────────────────────────────────────────────────
 const PLATFORM = {
   feePercent: 10,        // 10% on every transaction
@@ -1479,7 +1480,7 @@ function AuthModal({t,authMode,setAuthMode,setShowAuth,setIsLoggedIn,setUser,set
     setErr("");setStep(3);
   };
 
-  // Final submit (register) — REAL Supabase Auth
+  // Final submit (register) — Supabase signup + OTP email
   const submitRegister=async()=>{
     setErr("");
     if(!f.location){setErr(t("Please select your location","اختر موقعك"));return;}
@@ -1487,62 +1488,119 @@ function AuthModal({t,authMode,setAuthMode,setShowAuth,setIsLoggedIn,setUser,set
     setLoading(true);
     const finalRole=PLATFORM.adminEmails.includes(f.email.trim().toLowerCase())?"admin":role;
     try{
+      // 1. Create the account via Supabase Auth
       const res=await fetch(`${SUPABASE_URL}/auth/v1/signup`,{method:"POST",headers:{"apikey":SUPABASE_ANON_KEY,"Content-Type":"application/json"},
         body:JSON.stringify({email:f.email.trim(),password:f.password,options:{data:{name:f.name.trim(),role:finalRole,phone:f.phone,location:f.location}}})
       });
       const data=await res.json();
-      if(data.error||data.msg){setErr(data.error?.message||data.msg||"Registration failed");setLoading(false);return;}
-      // Upload avatar if provided
-      if(avatarFile&&data.user?.id){
-        const path=`${data.user.id}/avatar.${avatarFile.name.split('.').pop()}`;
-        const tk=data.access_token||data.session?.access_token||SUPABASE_ANON_KEY;
-        await fetch(`${SUPABASE_URL}/storage/v1/object/avatars/${path}`,{method:"POST",headers:{"apikey":SUPABASE_ANON_KEY,"Authorization":`Bearer ${tk}`,"Content-Type":avatarFile.type},body:avatarFile});
-        const avatarUrl=`${SUPABASE_URL}/storage/v1/object/public/avatars/${path}`;
-        await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${data.user.id}`,{method:"PATCH",headers:{"apikey":SUPABASE_ANON_KEY,"Authorization":`Bearer ${tk}`,"Content-Type":"application/json","Prefer":"return=minimal"},body:JSON.stringify({avatar_url:avatarUrl,phone:f.phone,location:f.location,bio:f.bio,specialty:f.specialty,role:finalRole})});
+
+      // Handle errors
+      if(data.error){
+        setErr(data.error.message||"Registration failed");
+        setLoading(false);return;
       }
-      // Update profile fields
-      if(data.session?.access_token&&data.user?.id){
-        await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${data.user.id}`,{method:"PATCH",headers:{"apikey":SUPABASE_ANON_KEY,"Authorization":`Bearer ${data.session.access_token}`,"Content-Type":"application/json","Prefer":"return=minimal"},body:JSON.stringify({name:f.name.trim(),phone:f.phone,location:f.location,bio:f.bio,specialty:f.specialty,role:finalRole})});
+
+      // Handle duplicate user (Supabase returns user with empty identities)
+      if(data.user&&data.user.identities&&data.user.identities.length===0){
+        setErr(t("An account with this email already exists. Try signing in.","حساب بهذا البريد موجود بالفعل. حاول تسجيل الدخول."));
+        setLoading(false);return;
       }
-      setLoading(false);
-      if(data.user&&!data.session){
-        // Email confirmation required — Supabase sends real email
-        setStep(4);
-        toast(`Verification email sent to ${f.email}! Check your inbox (and spam).`,"info");
-      } else if(data.session){
+
+      // If Supabase auto-confirms (confirm email OFF), session exists — log in directly
+      if(data.session&&data.session.access_token){
         localStorage.setItem("sb_token",data.session.access_token);
+        if(data.user?.id){
+          await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${data.user.id}`,{method:"PATCH",headers:{"apikey":SUPABASE_ANON_KEY,"Authorization":`Bearer ${data.session.access_token}`,"Content-Type":"application/json","Prefer":"return=minimal"},body:JSON.stringify({name:f.name.trim(),phone:f.phone,location:f.location,bio:f.bio,specialty:f.specialty,role:finalRole})});
+        }
         setIsLoggedIn(true);setUser({id:data.user.id,name:f.name.trim(),email:f.email.trim(),role:finalRole,bio:f.bio,specialty:f.specialty,phone:f.phone,location:f.location,avatar:avatarPreview,emailVerified:true});
         if(avatarPreview)setProfilePic(avatarPreview);
-        setShowAuth(false);
+        setShowAuth(false);setLoading(false);
         toast(`Welcome to AT-TIBYAN, ${f.name.split(" ")[0]}! 🎉`);
+        return;
       }
-    }catch(e){setErr("Network error. Please try again.");setLoading(false);}
+
+      // 2. No session = email confirmation required
+      // Supabase already sent a confirmation email with OTP token from the signup call
+      // Store role for after verification
+      setF(prev=>({...prev,_finalRole:finalRole}));
+      setLoading(false);
+      setStep(4);
+      toast(`Verification code sent to ${f.email}! Check your inbox. 📧`,"info");
+
+    }catch(e){
+      console.error("Signup error:",e);
+      setErr("Network error. Please try again.");
+      setLoading(false);
+    }
   };
 
-  // Check if user verified email (they click link in email, then come back and click this)
-  const checkVerification=async()=>{
-    setErr("");setLoading(true);
+  // Verify OTP code entered by user
+  const verifyOTP=async()=>{
+    setErr("");
+    const code=(f._enteredCode||"").trim();
+    if(!code||code.length!==6){setErr(t("Enter the 6-digit code from your email","أدخل الرمز المكون من 6 أرقام من بريدك"));return;}
+    setLoading(true);
     try{
-      const res=await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`,{method:"POST",headers:{"apikey":SUPABASE_ANON_KEY,"Content-Type":"application/json"},body:JSON.stringify({email:f.email.trim(),password:f.password})});
+      // Try signup verification type first
+      const res=await fetch(`${SUPABASE_URL}/auth/v1/verify`,{method:"POST",headers:{"apikey":SUPABASE_ANON_KEY,"Content-Type":"application/json"},
+        body:JSON.stringify({type:"signup",token:code,email:f.email.trim()})
+      });
       const data=await res.json();
-      if(data.error||data.msg){setErr(t("Email not verified yet. Click the link in your email, then try again.","لم يتم التحقق بعد. انقر الرابط في بريدك ثم حاول مجدداً."));setLoading(false);return;}
+      if(data.error){
+        // If signup type fails, try email type
+        const res2=await fetch(`${SUPABASE_URL}/auth/v1/verify`,{method:"POST",headers:{"apikey":SUPABASE_ANON_KEY,"Content-Type":"application/json"},
+          body:JSON.stringify({type:"email",token:code,email:f.email.trim()})
+        });
+        const data2=await res2.json();
+        if(data2.error){
+          setErr(data2.error.message||t("Invalid or expired code.","رمز غير صالح أو منتهي."));
+          setLoading(false);return;
+        }
+        if(data2.access_token){Object.assign(data,data2);}
+        else{setErr(t("Verification failed. Try again.","فشل التحقق. حاول مجدداً."));setLoading(false);return;}
+      }
       if(data.access_token){
         localStorage.setItem("sb_token",data.access_token);
-        const profRes=await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${data.user.id}&select=*`,{headers:{"apikey":SUPABASE_ANON_KEY,"Authorization":`Bearer ${data.access_token}`}});
-        const profiles=await profRes.json();
-        const profile=profiles?.[0]||{};
-        const finalRole=PLATFORM.adminEmails.includes(data.user.email?.toLowerCase())?"admin":(profile.role||role||"student");
-        setIsLoggedIn(true);setUser({id:data.user.id,name:profile.name||f.name.trim(),email:data.user.email,role:finalRole,bio:profile.bio||"",specialty:profile.specialty||"",phone:profile.phone||"",location:profile.location||"",avatar:profile.avatar_url||avatarPreview,emailVerified:true});
-        if(profile.avatar_url)setProfilePic(profile.avatar_url);else if(avatarPreview)setProfilePic(avatarPreview);
+        // Update profile with all registration data
+        if(data.user?.id){
+          const tk=data.access_token;
+          await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${data.user.id}`,{method:"PATCH",headers:{"apikey":SUPABASE_ANON_KEY,"Authorization":`Bearer ${tk}`,"Content-Type":"application/json","Prefer":"return=minimal"},
+            body:JSON.stringify({name:f.name.trim(),phone:f.phone,location:f.location,bio:f.bio,specialty:f.specialty,role:f._finalRole||role,email_verified:true})
+          });
+          // Upload avatar
+          if(avatarFile){
+            const path=`${data.user.id}/avatar.${avatarFile.name.split('.').pop()}`;
+            await fetch(`${SUPABASE_URL}/storage/v1/object/avatars/${path}`,{method:"POST",headers:{"apikey":SUPABASE_ANON_KEY,"Authorization":`Bearer ${tk}`,"Content-Type":avatarFile.type},body:avatarFile});
+            const avatarUrl=`${SUPABASE_URL}/storage/v1/object/public/avatars/${path}`;
+            await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${data.user.id}`,{method:"PATCH",headers:{"apikey":SUPABASE_ANON_KEY,"Authorization":`Bearer ${tk}`,"Content-Type":"application/json","Prefer":"return=minimal"},body:JSON.stringify({avatar_url:avatarUrl})});
+          }
+        }
+        const finalRole=f._finalRole||role||"student";
+        setIsLoggedIn(true);setUser({id:data.user.id,name:f.name.trim(),email:data.user.email||f.email.trim(),role:finalRole,bio:f.bio,specialty:f.specialty,phone:f.phone,location:f.location,avatar:avatarPreview,emailVerified:true});
+        if(avatarPreview)setProfilePic(avatarPreview);
         setShowAuth(false);setLoading(false);
-        toast(finalRole==="admin"?`Welcome back, Admin! 🔐`:`Welcome, ${(profile.name||f.name).split(" ")[0]}! Email verified 🎉`);
+        if(finalRole==="admin")toast(`Welcome Admin ${f.name.split(" ")[0]}! Full access granted. 🔐`);
+        else toast(`Welcome to AT-TIBYAN, ${f.name.split(" ")[0]}! Email verified 🎉`);
+      } else {
+        setErr(t("Verification failed. Please try again.","فشل التحقق. حاول مجدداً."));
+        setLoading(false);
       }
-    }catch(e){setErr("Network error. Try again.");setLoading(false);}
+    }catch(e){console.error("Verify error:",e);setErr("Network error. Try again.");setLoading(false);}
   };
 
-  // Resend verification email
-  const resendVerification=async()=>{
-    try{await fetch(`${SUPABASE_URL}/auth/v1/resend`,{method:"POST",headers:{"apikey":SUPABASE_ANON_KEY,"Content-Type":"application/json"},body:JSON.stringify({type:"signup",email:f.email.trim()})});toast("Verification email resent! Check inbox.","info");}catch(e){toast("Failed to resend.","error");}
+  // Resend OTP code
+  const resendOTP=async()=>{
+    setLoading(true);
+    try{
+      // Use resend endpoint for signup type
+      const res=await fetch(`${SUPABASE_URL}/auth/v1/resend`,{method:"POST",headers:{"apikey":SUPABASE_ANON_KEY,"Content-Type":"application/json"},
+        body:JSON.stringify({type:"signup",email:f.email.trim()})
+      });
+      const data=await res.json();
+      if(data.error){toast(data.error.message||"Please wait before resending.","error");}
+      else{toast("New verification code sent! Check your email. 📧","info");}
+    }catch(e){toast("Failed to resend.","error");}
+    setLoading(false);
   };
 
   // Login — REAL Supabase Auth
@@ -1714,7 +1772,7 @@ function AuthModal({t,authMode,setAuthMode,setShowAuth,setIsLoggedIn,setUser,set
       <div style={{textAlign:"center",marginTop:12,fontSize:11,color:"var(--text3)"}}>{t("Already have an account?","لديك حساب؟")} <span onClick={()=>{setAuthMode("login");setErr("")}} style={{color:"var(--accent)",cursor:"pointer",fontWeight:600}}>{t("Sign In","سجّل الدخول")}</span></div>
     </div>}
 
-    {/* ─── REGISTER STEP 4: Email Verification (Real — check email link) ─── */}
+    {/* ─── REGISTER STEP 4: OTP Code Verification ─── */}
     {isRegister&&step===4&&<div>
       <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:18}}>
         {[1,2,3,4].map(s=><Fragment key={s}><div style={{width:28,height:28,borderRadius:14,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,background:s<=step?"var(--accent)":"var(--bg3)",color:s<=step?"white":"var(--text3)",transition:"all 0.3s"}}>{s<step?"✓":s}</div>{s<4&&<div style={{flex:1,height:2,background:s<step?"var(--accent)":"var(--bg3)",borderRadius:1,transition:"all 0.3s"}}/>}</Fragment>)}
@@ -1722,32 +1780,25 @@ function AuthModal({t,authMode,setAuthMode,setShowAuth,setIsLoggedIn,setUser,set
 
       <div style={{textAlign:"center",marginBottom:20}}>
         <div style={{width:64,height:64,borderRadius:20,background:"var(--accent2)12",display:"flex",alignItems:"center",justifyContent:"center",fontSize:32,margin:"0 auto 12px"}}>📧</div>
-        <h3 style={{fontSize:16,fontWeight:700,marginBottom:6}}>{t("Check your email","تحقق من بريدك")}</h3>
-        <p style={{fontSize:13,color:"var(--text2)",lineHeight:1.6}}>{t("We sent a confirmation link to:","أرسلنا رابط تأكيد إلى:")}</p>
-        <p style={{fontSize:15,fontWeight:600,color:"var(--accent)",marginTop:6}}>{f.email}</p>
-      </div>
-
-      <div style={{padding:"16px 18px",borderRadius:14,background:"var(--bg2)",border:"1px solid var(--border)",marginBottom:16}}>
-        <div style={{display:"flex",alignItems:"flex-start",gap:10}}>
-          <span style={{fontSize:20,flexShrink:0}}>📌</span>
-          <div style={{fontSize:12,color:"var(--text2)",lineHeight:1.6}}>
-            <strong style={{color:"var(--text)"}}>{t("Steps:","الخطوات:")}</strong><br/>
-            {t("1. Open your email inbox","1. افتح صندوق الوارد")}<br/>
-            {t("2. Find the email from AT-TIBYAN (check spam too)","2. ابحث عن البريد من AT-TIBYAN (تحقق من البريد غير المرغوب)")}<br/>
-            {t("3. Click the confirmation link","3. انقر على رابط التأكيد")}<br/>
-            {t("4. Come back here and click the button below","4. ارجع هنا وانقر الزر أدناه")}
-          </div>
-        </div>
+        <h3 style={{fontSize:16,fontWeight:700,marginBottom:6}}>{t("Enter verification code","أدخل رمز التحقق")}</h3>
+        <p style={{fontSize:13,color:"var(--text2)",lineHeight:1.6}}>{t("We sent a 6-digit code to:","أرسلنا رمزاً مكوناً من 6 أرقام إلى:")}</p>
+        <p style={{fontSize:15,fontWeight:600,color:"var(--accent)",marginTop:4}}>{f.email}</p>
+        <p style={{fontSize:11,color:"var(--text3)",marginTop:6}}>{t("Check your inbox and spam folder","تحقق من صندوق الوارد والبريد غير المرغوب")}</p>
       </div>
 
       {err&&<div style={{padding:"8px 12px",borderRadius:10,background:"#C0392B12",color:"#C0392B",fontSize:12,marginBottom:10}}>❌ {err}</div>}
 
-      <button className="bp" onClick={checkVerification} disabled={loading} style={{width:"100%",padding:13}}>
-        {loading?<span style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6}}><span style={{width:14,height:14,border:"2px solid rgba(255,255,255,0.3)",borderTopColor:"white",borderRadius:"50%",animation:"spin 0.6s linear infinite",display:"inline-block"}}/>{t("Checking...","جارٍ التحقق...")}</span>:t("I've verified my email — Log me in","لقد أكّدت بريدي — سجل دخولي")}
+      <div style={{display:"flex",justifyContent:"center",gap:8,marginBottom:18}}>
+        <input className="inp" value={f._enteredCode||""} onChange={e=>{const v=e.target.value.replace(/\D/g,"").slice(0,6);setF({...f,_enteredCode:v});setErr("")}} placeholder="000000" maxLength={6} autoFocus
+          style={{textAlign:"center",fontSize:28,fontWeight:700,letterSpacing:"10px",maxWidth:240,fontFamily:"monospace",padding:"14px 16px"}}/>
+      </div>
+
+      <button className="bp" onClick={verifyOTP} disabled={loading||!f._enteredCode||f._enteredCode.length<6} style={{width:"100%",padding:14}}>
+        {loading?<span style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6}}><span style={{width:14,height:14,border:"2px solid rgba(255,255,255,0.3)",borderTopColor:"white",borderRadius:"50%",animation:"spin 0.6s linear infinite",display:"inline-block"}}/>{t("Verifying...","جارٍ التحقق...")}</span>:t("Verify & Create Account","تحقق وأنشئ الحساب")}
       </button>
 
       <div style={{textAlign:"center",marginTop:14,fontSize:12,color:"var(--text3)"}}>
-        {t("Didn't receive it?","لم تستلم البريد؟")} <span onClick={resendVerification} style={{color:"var(--accent)",cursor:"pointer",fontWeight:600}}>{t("Resend email","إعادة الإرسال")}</span>
+        {t("Didn't receive it?","لم تستلم الرمز؟")} <span onClick={resendOTP} style={{color:"var(--accent)",cursor:"pointer",fontWeight:600}}>{t("Resend code","إعادة إرسال الرمز")}</span>
       </div>
     </div>}
   </Modal>);
