@@ -7,7 +7,6 @@ import { useState, useEffect, useRef, useCallback, useMemo, Fragment } from "rea
 const SUPABASE_URL = "https://zqakvnmgmjtodicjxlju.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpxYWt2bm1nbWp0b2RpY2p4bGp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQzMTMxOTYsImV4cCI6MjA4OTg4OTE5Nn0.FKFl79HzrHVNwg_ONPHO21etQtJV2VfIEu8dUmNEB90";
 
-
 // ─── Platform Fee Config ─────────────────────────────────────────────────────
 const PLATFORM = {
   feePercent: 10,        // 10% on every transaction
@@ -1538,7 +1537,7 @@ function AuthModal({t,authMode,setAuthMode,setShowAuth,setIsLoggedIn,setUser,set
   const verifyOTP=async()=>{
     setErr("");
     const code=(f._enteredCode||"").trim();
-    if(!code||code.length!==6){setErr(t("Enter the 6-digit code from your email","أدخل الرمز المكون من 6 أرقام من بريدك"));return;}
+    if(!code||code.length<6){setErr(t("Enter the verification code from your email","أدخل رمز التحقق من بريدك"));return;}
     setLoading(true);
     try{
       // Try signup verification type first
@@ -1781,7 +1780,7 @@ function AuthModal({t,authMode,setAuthMode,setShowAuth,setIsLoggedIn,setUser,set
       <div style={{textAlign:"center",marginBottom:20}}>
         <div style={{width:64,height:64,borderRadius:20,background:"var(--accent2)12",display:"flex",alignItems:"center",justifyContent:"center",fontSize:32,margin:"0 auto 12px"}}>📧</div>
         <h3 style={{fontSize:16,fontWeight:700,marginBottom:6}}>{t("Enter verification code","أدخل رمز التحقق")}</h3>
-        <p style={{fontSize:13,color:"var(--text2)",lineHeight:1.6}}>{t("We sent a 6-digit code to:","أرسلنا رمزاً مكوناً من 6 أرقام إلى:")}</p>
+        <p style={{fontSize:13,color:"var(--text2)",lineHeight:1.6}}>{t("We sent a verification code to:","أرسلنا رمز تحقق إلى:")}</p>
         <p style={{fontSize:15,fontWeight:600,color:"var(--accent)",marginTop:4}}>{f.email}</p>
         <p style={{fontSize:11,color:"var(--text3)",marginTop:6}}>{t("Check your inbox and spam folder","تحقق من صندوق الوارد والبريد غير المرغوب")}</p>
       </div>
@@ -1789,8 +1788,8 @@ function AuthModal({t,authMode,setAuthMode,setShowAuth,setIsLoggedIn,setUser,set
       {err&&<div style={{padding:"8px 12px",borderRadius:10,background:"#C0392B12",color:"#C0392B",fontSize:12,marginBottom:10}}>❌ {err}</div>}
 
       <div style={{display:"flex",justifyContent:"center",gap:8,marginBottom:18}}>
-        <input className="inp" value={f._enteredCode||""} onChange={e=>{const v=e.target.value.replace(/\D/g,"").slice(0,6);setF({...f,_enteredCode:v});setErr("")}} placeholder="000000" maxLength={6} autoFocus
-          style={{textAlign:"center",fontSize:28,fontWeight:700,letterSpacing:"10px",maxWidth:240,fontFamily:"monospace",padding:"14px 16px"}}/>
+        <input className="inp" value={f._enteredCode||""} onChange={e=>{const v=e.target.value.replace(/\D/g,"").slice(0,8);setF({...f,_enteredCode:v});setErr("")}} placeholder="00000000" maxLength={8} autoFocus
+          style={{textAlign:"center",fontSize:26,fontWeight:700,letterSpacing:"8px",maxWidth:280,fontFamily:"monospace",padding:"14px 16px"}}/>
       </div>
 
       <button className="bp" onClick={verifyOTP} disabled={loading||!f._enteredCode||f._enteredCode.length<6} style={{width:"100%",padding:14}}>
