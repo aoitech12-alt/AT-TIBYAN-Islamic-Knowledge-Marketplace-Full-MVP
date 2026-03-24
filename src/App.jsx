@@ -4,8 +4,8 @@ import { useState, useEffect, useRef, useCallback, useMemo, Fragment } from "rea
 // AT-TIBYAN — Islamic Knowledge Marketplace (Full MVP + Monetization)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const SUPABASE_URL = "https://YOUR_PROJECT.supabase.co";
-const SUPABASE_ANON_KEY = "YOUR_ANON_KEY";
+const SUPABASE_URL = "https://zqakvnmgmjtodicjxlju.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpxYWt2bm1nbWp0b2RpY2p4bGp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQzMTMxOTYsImV4cCI6MjA4OTg4OTE5Nn0.FKFl79HzrHVNwg_ONPHO21etQtJV2VfIEu8dUmNEB90";
 
 // ─── Platform Fee Config ─────────────────────────────────────────────────────
 const PLATFORM = {
