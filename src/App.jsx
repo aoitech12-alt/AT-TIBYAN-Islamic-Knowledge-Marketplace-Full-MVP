@@ -19,7 +19,7 @@ const PLATFORM = {
   certExam: 19.99,       // Take a certification exam
   tipOptions: [2, 5, 10, 20], // Tip amounts
   barakahFundPercent: 1, // 1% of all transactions go to Barakah Fund
-  adminEmails: ["admin@attibyan.com","admin@at-tibyan.com"], // Only these emails get admin access
+  adminEmails: ["admin@attibyan.com","aoitech12@gmail.com"], // Only these emails get admin access
 };
 
 // ─── Supabase Helper ─────────────────────────────────────────────────────────
