@@ -19,6 +19,7 @@ const PLATFORM = {
   certExam: 19.99,       // Take a certification exam
   tipOptions: [2, 5, 10, 20], // Tip amounts
   barakahFundPercent: 1, // 1% of all transactions go to Barakah Fund
+  adminEmails: ["admin@attibyan.com","admin@at-tibyan.com"], // Only these emails get admin access
 };
 
 // ─── Supabase Helper ─────────────────────────────────────────────────────────
@@ -164,6 +165,16 @@ function Toast({message,type="success",onClose}){
 }
 
 // ─── Modal Shell ─────────────────────────────────────────────────────────────
+// ─── Access Denied Page ──────────────────────────────────────────────────────
+function AccessDenied({t,nav}){
+  return(<div style={{maxWidth:420,margin:"80px auto",textAlign:"center",padding:24,animation:"fadeIn 0.4s ease"}}>
+    <div style={{fontSize:52,marginBottom:14}}>🔒</div>
+    <h2 style={{fontSize:20,fontWeight:700,marginBottom:6}}>{t("Access Denied","الوصول مرفوض")}</h2>
+    <p style={{fontSize:13,color:"var(--text2)",marginBottom:20,lineHeight:1.6}}>{t("This area is restricted to platform administrators. If you believe this is an error, contact support.","هذه المنطقة مخصصة لمسؤولي المنصة فقط.")}</p>
+    <button className="bp" onClick={()=>nav("home")}>{t("Go Home","الرئيسية")}</button>
+  </div>);
+}
+
 function Modal({close,title,children,wide}){
   return(<div style={{position:"fixed",inset:0,zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.55)",backdropFilter:"blur(10px)"}} onClick={close}>
     <div style={{background:"var(--card)",borderRadius:22,padding:"30px 26px",width:wide?600:460,maxWidth:"94vw",border:"1px solid var(--border)",boxShadow:"var(--shadow)",animation:"scaleIn 0.3s ease",maxHeight:"90vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
@@ -205,6 +216,12 @@ export default function App(){
   const [user,setUser]=useState(null);
   const [profilePic,setProfilePic]=useState(null);
   const [isPro,setIsPro]=useState(false);
+  const [emailVerified,setEmailVerified]=useState(false);
+
+  // Role-based access
+  const isAdmin=isLoggedIn&&user&&PLATFORM.adminEmails.includes(user.email?.toLowerCase());
+  const isTeacher=isLoggedIn&&user&&user.role==="teacher";
+  const isStudent=isLoggedIn&&user&&user.role==="student";
 
   const [cc,setCc]=useState("US");
   const cur=CUR[cc]||CUR.US;
@@ -338,7 +355,7 @@ export default function App(){
     toast(`Session booked with ${teacher.name} on ${day} at ${slot} ✅`);
   };
 
-  const handleLogout=()=>{setIsLoggedIn(false);setUser(null);setProfilePic(null);setIsPro(false);setOrders([]);setBookings([]);setFavorites([]);nav("home");toast("Logged out","info");};
+  const handleLogout=()=>{setIsLoggedIn(false);setUser(null);setProfilePic(null);setIsPro(false);setEmailVerified(false);setOrders([]);setBookings([]);setFavorites([]);nav("home");toast("Logged out","info");};
 
   return(
   <div style={{background:"var(--bg)",color:"var(--text)",minHeight:"100vh",fontFamily:"'Outfit',sans-serif",transition:"all 0.35s ease",direction:isAr?"rtl":"ltr",...tv}}>
@@ -401,8 +418,8 @@ export default function App(){
           <div style={{fontSize:9,color:"var(--text3)",fontWeight:500,letterSpacing:"1px"}}>{t("Islamic Knowledge Hub","منصة العلم")}</div></div>
         </div>
         <div className="hm" style={{display:"flex",alignItems:"center",gap:2}}>
-          {[{k:"home",l:t("Home","الرئيسية"),ic:<I.Home/>},{k:"explore",l:t("Explore","استكشف"),ic:<I.Search/>},{k:"tracks",l:t("Tracks","مسارات"),ic:<I.Book/>},{k:"jobs",l:t("Jobs","طلبات"),ic:<I.Briefcase/>},{k:"pricing",l:t("Pro","برو"),ic:<I.Crown/>},{k:"admin-tracks",l:t("Admin","إدارة"),ic:<I.Settings/>}].map(n=>(
-            <button key={n.k} onClick={()=>nav(n.k)} style={{display:"flex",alignItems:"center",gap:4,padding:"6px 12px",borderRadius:9,border:"none",background:(page===n.k||(n.k==="admin-tracks"&&page==="admin-track-edit"))?"var(--bg3)":"transparent",color:(page===n.k||(n.k==="admin-tracks"&&page==="admin-track-edit"))?"var(--accent)":"var(--text2)",fontSize:12,fontWeight:(page===n.k||(n.k==="admin-tracks"&&page==="admin-track-edit"))?600:500,transition:"all 0.2s"}}>{n.ic}<span>{n.l}</span></button>
+          {[{k:"home",l:t("Home","الرئيسية"),ic:<I.Home/>,show:true},{k:"explore",l:t("Explore","استكشف"),ic:<I.Search/>,show:true},{k:"tracks",l:t("Tracks","مسارات"),ic:<I.Book/>,show:true},{k:"jobs",l:t("Jobs","طلبات"),ic:<I.Briefcase/>,show:true},{k:"pricing",l:t("Pro","برو"),ic:<I.Crown/>,show:true},{k:"admin-tracks",l:t("Admin","إدارة"),ic:<I.Settings/>,show:isAdmin}].filter(n=>n.show).map(n=>(
+            <button key={n.k} onClick={()=>nav(n.k)} style={{display:"flex",alignItems:"center",gap:4,padding:"6px 12px",borderRadius:9,border:"none",background:(page===n.k||(n.k==="admin-tracks"&&(page==="admin-track-edit"||page==="admin-jobs")))?"var(--bg3)":"transparent",color:(page===n.k||(n.k==="admin-tracks"&&(page==="admin-track-edit"||page==="admin-jobs")))?"var(--accent)":"var(--text2)",fontSize:12,fontWeight:(page===n.k||(n.k==="admin-tracks"&&page==="admin-track-edit"))?600:500,transition:"all 0.2s"}}>{n.ic}<span>{n.l}</span></button>
           ))}
         </div>
         <div style={{display:"flex",alignItems:"center",gap:5}}>
@@ -422,15 +439,18 @@ export default function App(){
     {page==="explore"&&<ExplorePage t={t} P={P} nav={nav} selCategory={selCategory} setSelCategory={setSelCategory} searchQuery={searchQuery} setSearchQuery={setSearchQuery} toggleFav={toggleFav} favorites={favorites}/>}
     {page==="gig"&&selGig&&<GigPage t={t} P={P} gig={selGig} nav={nav} openChat={openChat} openBooking={openBooking} handleOrder={handleOrder} toggleFav={toggleFav} favorites={favorites} cur={cur} isPro={isPro} openTip={openTip}/>}
     {page==="teacher"&&selTeacher&&<TeacherPage t={t} P={P} teacher={selTeacher} nav={nav} openChat={openChat} openBooking={openBooking} openTip={openTip}/>}
-    {page==="tracks"&&<TracksPage t={t} P={P} nav={nav} toast={toast} isLoggedIn={isLoggedIn} setShowAuth={setShowAuth} tracks={tracks} enrollTrack={enrollTrack} isEnrolled={isEnrolled} getEnrollment={getEnrollment} setSelTrack={setSelTrack} user={user}/>}
+    {page==="tracks"&&<TracksPage t={t} P={P} nav={nav} toast={toast} isLoggedIn={isLoggedIn} setShowAuth={setShowAuth} tracks={tracks} enrollTrack={enrollTrack} isEnrolled={isEnrolled} getEnrollment={getEnrollment} setSelTrack={setSelTrack} user={user} isAdmin={isAdmin}/>}
     {page==="track-detail"&&selTrack&&<TrackDetailPage t={t} P={P} nav={nav} track={selTrack} enrollTrack={enrollTrack} isEnrolled={isEnrolled} getEnrollment={getEnrollment}/>}
     {page==="learn-track"&&selTrack&&<LearnTrackPage t={t} P={P} nav={nav} track={selTrack} getEnrollment={getEnrollment} completeLecture={completeLecture} toast={toast} tracks={tracks}/>}
-    {page==="admin-tracks"&&<AdminTracksPage t={t} P={P} nav={nav} toast={toast} tracks={tracks} addTrackCourse={addTrackCourse} updateTrackCourse={updateTrackCourse} deleteTrackCourse={deleteTrackCourse} setSelTrack={setSelTrack} user={user}/>}
-    {page==="admin-track-edit"&&selTrack&&<AdminTrackEditor t={t} P={P} nav={nav} toast={toast} track={selTrack} updateTrackCourse={updateTrackCourse} addSection={addSection} addLecture={addLecture} deleteLecture={deleteLecture} deleteSection={deleteSection} tracks={tracks}/>}
-    {page==="jobs"&&<JobsPage t={t} P={P} nav={nav} toast={toast} isLoggedIn={isLoggedIn} setShowAuth={setShowAuth} handleBoost={handleBoost} jobs={jobs} setJobs={setJobs}/>}
-    {page==="admin-jobs"&&<AdminJobsPage t={t} P={P} nav={nav} toast={toast} jobs={jobs} setJobs={setJobs}/>}
+    {page==="admin-tracks"&&isAdmin&&<AdminTracksPage t={t} P={P} nav={nav} toast={toast} tracks={tracks} addTrackCourse={addTrackCourse} updateTrackCourse={updateTrackCourse} deleteTrackCourse={deleteTrackCourse} setSelTrack={setSelTrack} user={user}/>}
+    {page==="admin-tracks"&&!isAdmin&&<AccessDenied t={t} nav={nav}/>}
+    {page==="admin-track-edit"&&isAdmin&&selTrack&&<AdminTrackEditor t={t} P={P} nav={nav} toast={toast} track={selTrack} updateTrackCourse={updateTrackCourse} addSection={addSection} addLecture={addLecture} deleteLecture={deleteLecture} deleteSection={deleteSection} tracks={tracks}/>}
+    {page==="admin-track-edit"&&!isAdmin&&<AccessDenied t={t} nav={nav}/>}
+    {page==="jobs"&&<JobsPage t={t} P={P} nav={nav} toast={toast} isLoggedIn={isLoggedIn} setShowAuth={setShowAuth} handleBoost={handleBoost} jobs={jobs} setJobs={setJobs} isAdmin={isAdmin}/>}
+    {page==="admin-jobs"&&isAdmin&&<AdminJobsPage t={t} P={P} nav={nav} toast={toast} jobs={jobs} setJobs={setJobs}/>}
+    {page==="admin-jobs"&&!isAdmin&&<AccessDenied t={t} nav={nav}/>}
     {page==="pricing"&&<PricingPage t={t} P={P} isPro={isPro} handleProSubscribe={handleProSubscribe} handleBoost={handleBoost} isLoggedIn={isLoggedIn} setShowAuth={setShowAuth}/>}
-    {page==="dashboard"&&<DashboardPage t={t} P={P} nav={nav} isLoggedIn={isLoggedIn} setShowAuth={setShowAuth} user={user} setUser={setUser} profilePic={profilePic} setProfilePic={setProfilePic} orders={orders} bookings={bookings} cur={cur} handleLogout={handleLogout} toast={toast} favorites={favorites} toggleFav={toggleFav} isPro={isPro} setShowProModal={setShowProModal} revenue={revenue}/>}
+    {page==="dashboard"&&<DashboardPage t={t} P={P} nav={nav} isLoggedIn={isLoggedIn} setShowAuth={setShowAuth} user={user} setUser={setUser} profilePic={profilePic} setProfilePic={setProfilePic} orders={orders} bookings={bookings} cur={cur} handleLogout={handleLogout} toast={toast} favorites={favorites} toggleFav={toggleFav} isPro={isPro} setShowProModal={setShowProModal} revenue={revenue} isAdmin={isAdmin} isTeacher={isTeacher} emailVerified={emailVerified}/>}
   </div>);
 }
 
@@ -678,7 +698,7 @@ function TeacherPage({t,P,teacher,nav,openChat,openBooking,openTip}){
 }
 
 // ─── LEARNING TRACKS (Udemy-style) ───────────────────────────────────────────
-function TracksPage({t,P,nav,toast,isLoggedIn,setShowAuth,tracks,enrollTrack,isEnrolled,getEnrollment,setSelTrack,user}){
+function TracksPage({t,P,nav,toast,isLoggedIn,setShowAuth,tracks,enrollTrack,isEnrolled,getEnrollment,setSelTrack,user,isAdmin}){
   const [filter,setFilter]=useState("all");
   const [loading,setLoading]=useState(true);
   useEffect(()=>{const tm=setTimeout(()=>setLoading(false),500);return()=>clearTimeout(tm)},[]);
@@ -691,7 +711,7 @@ function TracksPage({t,P,nav,toast,isLoggedIn,setShowAuth,tracks,enrollTrack,isE
         <h1 style={{fontSize:26,fontWeight:800,letterSpacing:"-0.5px",marginBottom:4}}>{t("Learning Tracks","مسارات التعلم")}</h1>
         <p style={{fontSize:13,color:"var(--text2)"}}>{t("Structured paths designed by scholars. Free and premium tracks available.","مسارات منظمة صممها العلماء. مسارات مجانية ومدفوعة.")}</p>
       </div>
-      <button className="bp" onClick={()=>nav("admin-tracks")} style={{fontSize:12,padding:"8px 18px"}}><I.Settings/> {t("Manage Courses","إدارة الدورات")}</button>
+      {isAdmin&&<button className="bp" onClick={()=>nav("admin-tracks")} style={{fontSize:12,padding:"8px 18px"}}><I.Settings/> {t("Manage Courses","إدارة الدورات")}</button>}
     </div>
     <div style={{display:"flex",gap:6,marginBottom:20}}>
       {[{k:"all",l:t("All","الكل")},{k:"free",l:t("Free","مجاني")},{k:"paid",l:t("Premium","مدفوع")}].map(f=><button key={f.k} className={`tg ${filter===f.k?"act":""}`} onClick={()=>setFilter(f.k)}>{f.l}</button>)}
@@ -1053,7 +1073,7 @@ function AdminTrackEditor({t,P,nav,toast,track,updateTrackCourse,addSection,addL
 }
 
 // ─── JOBS PAGE ───────────────────────────────────────────────────────────────
-function JobsPage({t,P,nav,toast,isLoggedIn,setShowAuth,handleBoost,jobs,setJobs}){
+function JobsPage({t,P,nav,toast,isLoggedIn,setShowAuth,handleBoost,jobs,setJobs,isAdmin}){
   const [showPost,setShowPost]=useState(false);
   const [showApply,setShowApply]=useState(null);
   const [pf,setPf]=useState({title:"",desc:"",budget:"",category:"",urgent:false});
@@ -1075,7 +1095,7 @@ function JobsPage({t,P,nav,toast,isLoggedIn,setShowAuth,handleBoost,jobs,setJobs
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20,flexWrap:"wrap",gap:10}}>
       <div><h1 style={{fontSize:24,fontWeight:700,marginBottom:2}}>{t("Job Requests","طلبات العمل")}</h1><p style={{fontSize:12,color:"var(--text2)"}}>{visibleJobs.filter(j=>j.status==="approved").length} {t("active requests","طلب نشط")}</p></div>
       <div style={{display:"flex",gap:8}}>
-        <button className="bp" onClick={()=>nav("admin-jobs")} style={{fontSize:12,padding:"8px 16px",background:"var(--bg2)",color:"var(--text)",border:"1px solid var(--border)"}}><I.Settings/> {t("Review Queue","مراجعة")} {pendingCount>0&&<span style={{background:"#E74C3C",color:"white",padding:"1px 7px",borderRadius:10,fontSize:10,fontWeight:700,marginLeft:4}}>{pendingCount}</span>}</button>
+        <button className="bp" onClick={()=>nav("admin-jobs")} style={{fontSize:12,padding:"8px 16px",background:"var(--bg2)",color:"var(--text)",border:"1px solid var(--border)",display:isAdmin?"flex":"none"}}><I.Settings/> {t("Review Queue","مراجعة")} {pendingCount>0&&<span style={{background:"#E74C3C",color:"white",padding:"1px 7px",borderRadius:10,fontSize:10,fontWeight:700,marginLeft:4}}>{pendingCount}</span>}</button>
         <button className="bp" onClick={()=>{if(!isLoggedIn){setShowAuth(true);return;}setPf({title:"",desc:"",budget:"",category:"",urgent:false});setErr("");setShowPost(true)}} style={{fontSize:12}}><span style={{display:"flex",alignItems:"center",gap:4}}><I.Plus/>{t("Post","أنشئ")}</span></button>
       </div>
     </div>
@@ -1278,9 +1298,9 @@ function PricingPage({t,P,isPro,handleProSubscribe,handleBoost,isLoggedIn,setSho
 // ═══════════════════════════════════════════════════════════════════════════════
 // DASHBOARD
 // ═══════════════════════════════════════════════════════════════════════════════
-function DashboardPage({t,P,nav,isLoggedIn,setShowAuth,user,setUser,profilePic,setProfilePic,orders,bookings,cur,handleLogout,toast,favorites,toggleFav,isPro,setShowProModal,revenue}){
+function DashboardPage({t,P,nav,isLoggedIn,setShowAuth,user,setUser,profilePic,setProfilePic,orders,bookings,cur,handleLogout,toast,favorites,toggleFav,isPro,setShowProModal,revenue,isAdmin,isTeacher,emailVerified}){
   const [tab,setTab]=useState("overview");
-  const [form,setForm]=useState({name:user?.name||"",bio:user?.bio||"",specialty:user?.specialty||""});
+  const [form,setForm]=useState({name:user?.name||"",bio:user?.bio||"",specialty:user?.specialty||"",phone:user?.phone||"",location:user?.location||""});
   const fileRef=useRef();
 
   if(!isLoggedIn)return(<div style={{maxWidth:420,margin:"70px auto",textAlign:"center",padding:24}}><div style={{fontSize:40,marginBottom:12}}>🔒</div><h2 style={{fontSize:18,fontWeight:700,marginBottom:5}}>{t("Login Required","يجب تسجيل الدخول")}</h2><button className="bp" onClick={()=>setShowAuth(true)} style={{marginTop:14}}>{t("Sign In","سجّل")}</button></div>);
@@ -1290,41 +1310,62 @@ function DashboardPage({t,P,nav,isLoggedIn,setShowAuth,user,setUser,profilePic,s
   const favGigs=GIGS.filter(g=>favorites.includes(g.id));
   const totalSpent=orders.reduce((s,o)=>s+(o.total||0),0);
 
-  const stats=[
+  const roleBadge=isAdmin?{label:"Admin",color:"#C0392B",bg:"#C0392B12",icon:"🔐"}:isTeacher?{label:t("Teacher","معلم"),color:"var(--accent2)",bg:"var(--accent2)12",icon:"👨‍🏫"}:{label:t("Student","طالب"),color:"var(--accent)",bg:"var(--accent)12",icon:"📖"};
+
+  const stats=isAdmin?[
+    {label:"Total Revenue",value:P(revenue.platform+revenue.barakahFund+revenue.teacherPayouts),icon:"💰",color:"#D4AF37"},
+    {label:"Platform Fees",value:P(revenue.platform),icon:"🏦",color:"var(--accent)"},
+    {label:"Barakah Fund",value:P(revenue.barakahFund),icon:"🤲",color:"var(--accent2)"},
+    {label:"Total Orders",value:orders.length,icon:"📋",color:"var(--accent)"},
+  ]:[
     {label:t("Active","نشطة"),value:orders.filter(o=>o.status==="active").length,icon:"📋",color:"var(--accent)"},
     {label:t("Bookings","حجوزات"),value:bookings.length,icon:"📅",color:"var(--accent2)"},
-    {label:t("Total Spent","المنفق"),value:P(totalSpent),icon:"💰",color:"var(--accent)"},
+    {label:isTeacher?t("Earnings","الأرباح"):t("Total Spent","المنفق"),value:P(totalSpent),icon:"💰",color:"var(--accent)"},
     {label:t("Favorites","المفضلة"),value:favGigs.length,icon:"❤️",color:"#E74C3C"},
   ];
 
+  const tabs=isAdmin?["overview","orders","bookings","admin","profile"]:["overview","orders","bookings","favorites","profile"];
+
   return(<div style={{maxWidth:1060,margin:"0 auto",padding:"24px 24px",animation:"fadeIn 0.4s ease"}}>
+    {/* Header */}
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20,flexWrap:"wrap",gap:10}}>
       <div style={{display:"flex",alignItems:"center",gap:12}}>
         <div style={{position:"relative"}}>
-          <div style={{width:54,height:54,borderRadius:18,background:profilePic?`url(${profilePic}) center/cover`:"linear-gradient(135deg,var(--accent),var(--accent2))",display:"flex",alignItems:"center",justifyContent:"center",color:"white",fontSize:22,overflow:"hidden",border:isPro?"2.5px solid #D4AF37":"none"}}>{!profilePic&&<I.User/>}</div>
+          <div style={{width:54,height:54,borderRadius:18,background:profilePic?`url(${profilePic}) center/cover`:"linear-gradient(135deg,var(--accent),var(--accent2))",display:"flex",alignItems:"center",justifyContent:"center",color:"white",fontSize:22,overflow:"hidden",border:isAdmin?"2.5px solid #C0392B":isPro?"2.5px solid #D4AF37":"none"}}>{!profilePic&&<I.User/>}</div>
           <button onClick={()=>fileRef.current?.click()} style={{position:"absolute",bottom:-2,right:-2,width:22,height:22,borderRadius:7,background:"var(--accent)",border:"2px solid var(--card)",display:"flex",alignItems:"center",justifyContent:"center",color:"white"}}><I.Camera/></button>
           <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={handlePic}/>
         </div>
-        <div><div style={{display:"flex",alignItems:"center",gap:6}}><h1 style={{fontSize:20,fontWeight:700}}>{user?.name||"Welcome!"}</h1>{isPro&&<span className="pro-badge">👑 PRO</span>}</div><p style={{fontSize:11,color:"var(--text2)"}}>{user?.role==="teacher"?t("Teacher","معلم"):t("Student","طالب")} • {user?.email}</p></div>
+        <div>
+          <div style={{display:"flex",alignItems:"center",gap:6}}>
+            <h1 style={{fontSize:20,fontWeight:700}}>{user?.name||"Welcome!"}</h1>
+            <span style={{fontSize:10,padding:"2px 8px",borderRadius:8,background:roleBadge.bg,color:roleBadge.color,fontWeight:600}}>{roleBadge.icon} {roleBadge.label}</span>
+            {isPro&&<span className="pro-badge">👑 PRO</span>}
+          </div>
+          <p style={{fontSize:11,color:"var(--text2)"}}>{user?.email}{user?.location?` • ${user.location}`:""}</p>
+        </div>
       </div>
-      <div style={{display:"flex",gap:6}}>
-        {!isPro&&<button className="bs" onClick={()=>setShowProModal(true)} style={{fontSize:11,padding:"6px 12px",color:"var(--accent)",borderColor:"var(--accent)"}}>👑 {t("Go Pro","برو")}</button>}
+      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+        {isAdmin&&<button className="bp" onClick={()=>nav("admin-tracks")} style={{fontSize:11,padding:"6px 12px"}}>🔐 {t("Admin Panel","لوحة الإدارة")}</button>}
+        {!isPro&&!isAdmin&&<button className="bs" onClick={()=>setShowProModal(true)} style={{fontSize:11,padding:"6px 12px",color:"var(--accent)",borderColor:"var(--accent)"}}>👑 {t("Go Pro","برو")}</button>}
         <button className="bs" onClick={handleLogout} style={{fontSize:11,padding:"6px 12px",color:"#E74C3C",borderColor:"#E74C3C30"}}><span style={{display:"flex",alignItems:"center",gap:3}}><I.LogOut/>{t("Logout","خروج")}</span></button>
       </div>
     </div>
 
+    {/* Tabs */}
     <div style={{display:"flex",gap:3,overflowX:"auto",marginBottom:20,borderBottom:"1px solid var(--border)"}}>
-      {["overview","orders","bookings","favorites","profile"].map(tb=><button key={tb} onClick={()=>setTab(tb)} style={{padding:"8px 16px",border:"none",background:"none",fontSize:12,fontWeight:tab===tb?600:400,color:tab===tb?"var(--accent)":"var(--text3)",borderBottom:tab===tb?"2px solid var(--accent)":"2px solid transparent",cursor:"pointer",whiteSpace:"nowrap"}}>{tb.charAt(0).toUpperCase()+tb.slice(1)}</button>)}
+      {tabs.map(tb=><button key={tb} onClick={()=>setTab(tb)} style={{padding:"8px 16px",border:"none",background:"none",fontSize:12,fontWeight:tab===tb?600:400,color:tab===tb?"var(--accent)":"var(--text3)",borderBottom:tab===tb?"2px solid var(--accent)":"2px solid transparent",cursor:"pointer",whiteSpace:"nowrap"}}>{tb==="admin"?"🔐 Admin":tb.charAt(0).toUpperCase()+tb.slice(1)}</button>)}
     </div>
 
+    {/* Overview */}
     {tab==="overview"&&<div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:12,marginBottom:24}} className="mg">
         {stats.map((s,i)=><div key={i} className="cd" style={{padding:20}}><div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}><span style={{fontSize:24}}>{s.icon}</span><span style={{fontSize:22,fontWeight:700,color:s.color}}>{s.value}</span></div><div style={{fontSize:11,color:"var(--text2)"}}>{s.label}</div></div>)}
       </div>
-      {isPro&&<div style={{padding:"12px 18px",borderRadius:12,background:"linear-gradient(135deg,#8B691420,#C9A94E10)",border:"1px solid #D4AF37",marginBottom:16,fontSize:12,color:"var(--accent)",fontWeight:500}}>👑 {t("Pro Member — You save ","عضو برو — وفّرت ")}{P(totalSpent*PLATFORM.feePercent/100)} {t("in platform fees!","في رسوم المنصة!")}</div>}
+      {isPro&&<div style={{padding:"12px 18px",borderRadius:12,background:"linear-gradient(135deg,#8B691420,#C9A94E10)",border:"1px solid #D4AF37",marginBottom:16,fontSize:12,color:"var(--accent)",fontWeight:500}}>👑 Pro Member — You save {P(totalSpent*PLATFORM.feePercent/100)} in platform fees!</div>}
+      {isTeacher&&<div style={{padding:"12px 18px",borderRadius:12,background:"var(--accent2)08",border:"1px solid var(--accent2)20",marginBottom:16,fontSize:12,color:"var(--accent2)",fontWeight:500}}>👨‍🏫 {t("Teacher Account — Create gigs, apply to jobs, and offer your expertise.","حساب معلم — أنشئ خدمات، تقدم للطلبات، وقدم خبرتك.")}</div>}
       <div className="cd" style={{padding:20}}>
-        <h3 style={{fontSize:14,fontWeight:600,marginBottom:12}}>{t("Recent","الأخير")}</h3>
-        {orders.length===0&&bookings.length===0?<p style={{fontSize:12,color:"var(--text3)",padding:16,textAlign:"center"}}>{t("No activity yet.","لا نشاط بعد.")}</p>:
+        <h3 style={{fontSize:14,fontWeight:600,marginBottom:12}}>{t("Recent Activity","النشاط الأخير")}</h3>
+        {orders.length===0&&bookings.length===0?<p style={{fontSize:12,color:"var(--text3)",padding:16,textAlign:"center"}}>{t("No activity yet. Start exploring!","لا نشاط بعد. ابدأ الاستكشاف!")}</p>:
         [...orders.slice(-3).reverse(),...bookings.slice(-2).reverse()].map((item,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 0",borderBottom:"1px solid var(--border)"}}><span style={{fontSize:16}}>{item.gig?"📋":"📅"}</span><div style={{flex:1,fontSize:11,fontWeight:500}}>{item.gig?item.gig.title.slice(0,40)+"...":item.teacher?.name}</div><span style={{fontSize:11,fontWeight:600,color:"var(--accent)"}}>{item.total?P(item.total):""}</span></div>)}
       </div>
     </div>}
@@ -1333,7 +1374,7 @@ function DashboardPage({t,P,nav,isLoggedIn,setShowAuth,user,setUser,profilePic,s
       orders.map((o,i)=><div key={i} className="cd" style={{padding:18,marginBottom:8}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:6}}>
           <div><h4 style={{fontSize:13,fontWeight:600,marginBottom:2}}>{o.gig?.title}</h4><p style={{fontSize:10,color:"var(--text3)"}}>{o.tier} • {o.date}</p></div>
-          <div style={{textAlign:"right"}}><div style={{fontSize:14,fontWeight:700,color:"var(--accent)"}}>{P(o.total)}</div>{o.fee>0&&<div style={{fontSize:9,color:"var(--text3)"}}>{t("incl. fee","شامل الرسوم")} {P(o.fee)}</div>}<span style={{fontSize:10,padding:"2px 7px",borderRadius:7,background:"#2D6A4F20",color:"#2D6A4F",fontWeight:600}}>{o.status}</span></div>
+          <div style={{textAlign:"right"}}><div style={{fontSize:14,fontWeight:700,color:"var(--accent)"}}>{P(o.total)}</div>{o.fee>0&&<div style={{fontSize:9,color:"var(--text3)"}}>incl. fee {P(o.fee)}</div>}<span style={{fontSize:10,padding:"2px 7px",borderRadius:7,background:"#2D6A4F20",color:"#2D6A4F",fontWeight:600}}>{o.status}</span></div>
         </div>
       </div>)}</div>}
 
@@ -1347,6 +1388,32 @@ function DashboardPage({t,P,nav,isLoggedIn,setShowAuth,user,setUser,profilePic,s
     {tab==="favorites"&&<div>{favGigs.length===0?<div style={{textAlign:"center",padding:36,color:"var(--text3)"}}>No favorites</div>:
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:13}} className="mg">{favGigs.map((g,i)=><GigCard key={g.id} gig={g} t={t} P={P} i={i} onClick={()=>nav("gig",g)} toggleFav={toggleFav} isFav={true}/>)}</div>}</div>}
 
+    {/* Admin Quick Links Tab */}
+    {tab==="admin"&&isAdmin&&<div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))",gap:14}} className="mg">
+        <div className="cd lift" onClick={()=>nav("admin-tracks")} style={{padding:24,cursor:"pointer",textAlign:"center"}}>
+          <div style={{fontSize:36,marginBottom:8}}>📚</div>
+          <h3 style={{fontSize:15,fontWeight:600,marginBottom:4}}>Course Management</h3>
+          <p style={{fontSize:12,color:"var(--text3)"}}>{t("Create, edit, publish courses","إنشاء وتعديل ونشر الدورات")}</p>
+        </div>
+        <div className="cd lift" onClick={()=>nav("admin-jobs")} style={{padding:24,cursor:"pointer",textAlign:"center"}}>
+          <div style={{fontSize:36,marginBottom:8}}>📋</div>
+          <h3 style={{fontSize:15,fontWeight:600,marginBottom:4}}>Job Approvals</h3>
+          <p style={{fontSize:12,color:"var(--text3)"}}>{t("Review and approve job requests","مراجعة والموافقة على طلبات العمل")}</p>
+        </div>
+        <div className="cd" style={{padding:24,textAlign:"center"}}>
+          <div style={{fontSize:36,marginBottom:8}}>👥</div>
+          <h3 style={{fontSize:15,fontWeight:600,marginBottom:4}}>User Management</h3>
+          <p style={{fontSize:12,color:"var(--text3)"}}>{t("Coming soon","قريباً")}</p>
+        </div>
+        <div className="cd" style={{padding:24,textAlign:"center"}}>
+          <div style={{fontSize:36,marginBottom:8}}>📊</div>
+          <h3 style={{fontSize:15,fontWeight:600,marginBottom:4}}>Analytics</h3>
+          <p style={{fontSize:12,color:"var(--text3)"}}>{t("Coming soon","قريباً")}</p>
+        </div>
+      </div>
+    </div>}
+
     {tab==="profile"&&<div className="cd" style={{padding:24,maxWidth:520}}>
       <h3 style={{fontSize:16,fontWeight:600,marginBottom:16}}>{t("Edit Profile","تعديل الملف")}</h3>
       <div style={{textAlign:"center",marginBottom:16}}><div style={{position:"relative",display:"inline-block"}}><div style={{width:72,height:72,borderRadius:22,background:profilePic?`url(${profilePic}) center/cover`:"linear-gradient(135deg,var(--accent),var(--accent2))",display:"flex",alignItems:"center",justifyContent:"center",color:"white",fontSize:28,overflow:"hidden"}}>{!profilePic&&<I.User/>}</div><button onClick={()=>fileRef.current?.click()} style={{position:"absolute",bottom:-2,right:-2,width:26,height:26,borderRadius:9,background:"var(--accent)",border:"2px solid var(--card)",display:"flex",alignItems:"center",justifyContent:"center",color:"white"}}><I.Camera/></button></div></div>
@@ -1354,8 +1421,12 @@ function DashboardPage({t,P,nav,isLoggedIn,setShowAuth,user,setUser,profilePic,s
       <input className="inp" value={form.name} onChange={e=>setForm({...form,name:e.target.value})} style={{marginBottom:10}}/>
       <label style={{fontSize:10,fontWeight:600,color:"var(--text2)",marginBottom:2,display:"block"}}>Bio</label>
       <textarea className="inp" rows={3} value={form.bio} onChange={e=>setForm({...form,bio:e.target.value})} style={{marginBottom:10,resize:"vertical"}}/>
-      <label style={{fontSize:10,fontWeight:600,color:"var(--text2)",marginBottom:2,display:"block"}}>Specialization</label>
-      <input className="inp" value={form.specialty} onChange={e=>setForm({...form,specialty:e.target.value})} placeholder="e.g. Tajweed, Nahwu" style={{marginBottom:14}}/>
+      {(isTeacher||isAdmin)&&<><label style={{fontSize:10,fontWeight:600,color:"var(--text2)",marginBottom:2,display:"block"}}>Specialization</label>
+      <input className="inp" value={form.specialty} onChange={e=>setForm({...form,specialty:e.target.value})} placeholder="e.g. Tajweed, Nahwu" style={{marginBottom:10}}/></>}
+      <label style={{fontSize:10,fontWeight:600,color:"var(--text2)",marginBottom:2,display:"block"}}>Phone</label>
+      <input className="inp" value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})} style={{marginBottom:10}}/>
+      <label style={{fontSize:10,fontWeight:600,color:"var(--text2)",marginBottom:2,display:"block"}}>Location</label>
+      <input className="inp" value={form.location} onChange={e=>setForm({...form,location:e.target.value})} style={{marginBottom:14}}/>
       <button className="bp" onClick={savePro} style={{width:"100%"}}>{t("Save","حفظ")}</button>
     </div>}
   </div>);
@@ -1414,16 +1485,35 @@ function AuthModal({t,authMode,setAuthMode,setShowAuth,setIsLoggedIn,setUser,set
     if(!f.location){setErr(t("Please select your location","اختر موقعك"));return;}
     if(!agreed){setErr(t("You must agree to the terms","يجب الموافقة على الشروط"));return;}
     setLoading(true);
-    // Simulate Supabase auth + profile creation
+    // Determine role: admin only if email matches config
+    const finalRole=PLATFORM.adminEmails.includes(f.email.trim().toLowerCase())?"admin":role;
+    // Simulate email verification code
+    const verifyCode=String(Math.floor(100000+Math.random()*900000));
     setTimeout(()=>{
-      const newUser={id:Date.now(),name:f.name.trim(),email:f.email.trim(),role,bio:f.bio,specialty:f.specialty,phone:f.phone,location:f.location,avatar:avatarPreview};
+      setLoading(false);
+      setStep(4); // Go to email verification step
+      toast(`Verification code sent to ${f.email} (Demo: ${verifyCode})`,`info`);
+      // Store data temporarily for after verification
+      setF(prev=>({...prev,_verifyCode:verifyCode,_finalRole:finalRole}));
+    },900);
+  };
+
+  // Email verification submit
+  const submitVerification=()=>{
+    setErr("");
+    if(!f._enteredCode||f._enteredCode.length!==6){setErr(t("Enter the 6-digit code","أدخل الرمز المكون من 6 أرقام"));return;}
+    if(f._enteredCode!==f._verifyCode){setErr(t("Invalid verification code","رمز التحقق غير صحيح"));return;}
+    setLoading(true);
+    setTimeout(()=>{
+      const newUser={id:Date.now(),name:f.name.trim(),email:f.email.trim(),role:f._finalRole,bio:f.bio,specialty:f.specialty,phone:f.phone,location:f.location,avatar:avatarPreview,emailVerified:true};
       setIsLoggedIn(true);
       setUser(newUser);
       if(avatarPreview)setProfilePic(avatarPreview);
       setShowAuth(false);
       setLoading(false);
-      toast(`Welcome to AT-TIBYAN, ${f.name.split(" ")[0]}! 🎉 Account created as ${role}.`);
-    },900);
+      if(f._finalRole==="admin")toast(`Welcome Admin ${f.name.split(" ")[0]}! Full platform access granted. 🔐`);
+      else toast(`Welcome to AT-TIBYAN, ${f.name.split(" ")[0]}! 🎉 Email verified.`);
+    },700);
   };
 
   // Login submit
@@ -1444,7 +1534,7 @@ function AuthModal({t,authMode,setAuthMode,setShowAuth,setIsLoggedIn,setUser,set
   const totalSteps=3;
   const isRegister=authMode==="register";
 
-  return(<Modal close={()=>setShowAuth(false)} title={isRegister?step===1?t("Join AT-TIBYAN","انضم للتبيان"):step===2?t("Create Account","إنشاء حساب"):t("Complete Profile","أكمل ملفك"):t("Welcome Back","مرحباً بعودتك")} wide={isRegister&&step===3}>
+  return(<Modal close={()=>setShowAuth(false)} title={isRegister?step===1?t("Join AT-TIBYAN","انضم للتبيان"):step===2?t("Create Account","إنشاء حساب"):step===3?t("Complete Profile","أكمل ملفك"):t("Verify Email","تأكيد البريد"):t("Welcome Back","مرحباً بعودتك")} wide={isRegister&&step===3}>
 
     {/* ─── LOGIN FORM ─── */}
     {!isRegister&&<div>
@@ -1578,6 +1668,35 @@ function AuthModal({t,authMode,setAuthMode,setShowAuth,setIsLoggedIn,setUser,set
         </button>
       </div>
       <div style={{textAlign:"center",marginTop:12,fontSize:11,color:"var(--text3)"}}>{t("Already have an account?","لديك حساب؟")} <span onClick={()=>{setAuthMode("login");setErr("")}} style={{color:"var(--accent)",cursor:"pointer",fontWeight:600}}>{t("Sign In","سجّل الدخول")}</span></div>
+    </div>}
+
+    {/* ─── REGISTER STEP 4: Email Verification ─── */}
+    {isRegister&&step===4&&<div>
+      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:18}}>
+        {[1,2,3,4].map(s=><Fragment key={s}><div style={{width:28,height:28,borderRadius:14,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,background:s<=step?"var(--accent)":"var(--bg3)",color:s<=step?"white":"var(--text3)",transition:"all 0.3s"}}>{s<step?"✓":s}</div>{s<4&&<div style={{flex:1,height:2,background:s<step?"var(--accent)":"var(--bg3)",borderRadius:1,transition:"all 0.3s"}}/>}</Fragment>)}
+      </div>
+
+      <div style={{textAlign:"center",marginBottom:20}}>
+        <div style={{width:64,height:64,borderRadius:20,background:"var(--accent2)12",display:"flex",alignItems:"center",justifyContent:"center",fontSize:32,margin:"0 auto 12px"}}>📧</div>
+        <h3 style={{fontSize:16,fontWeight:700,marginBottom:4}}>{t("Check your email","تحقق من بريدك")}</h3>
+        <p style={{fontSize:13,color:"var(--text2)",lineHeight:1.6}}>{t("We sent a 6-digit verification code to","أرسلنا رمز تحقق مكون من 6 أرقام إلى")}</p>
+        <p style={{fontSize:14,fontWeight:600,color:"var(--accent)",marginTop:4}}>{f.email}</p>
+      </div>
+
+      {err&&<div style={{padding:"8px 12px",borderRadius:10,background:"#C0392B12",color:"#C0392B",fontSize:12,marginBottom:10}}>❌ {err}</div>}
+
+      <div style={{display:"flex",justifyContent:"center",gap:8,marginBottom:16}}>
+        <input className="inp" value={f._enteredCode||""} onChange={e=>{const v=e.target.value.replace(/\D/g,"").slice(0,6);setF({...f,_enteredCode:v});setErr("")}} placeholder="000000" maxLength={6}
+          style={{textAlign:"center",fontSize:24,fontWeight:700,letterSpacing:"8px",maxWidth:220,fontFamily:"var(--font-mono,monospace)"}}/>
+      </div>
+
+      <button className="bp" onClick={submitVerification} disabled={loading||!f._enteredCode||f._enteredCode.length<6} style={{width:"100%",padding:13}}>
+        {loading?<span style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6}}><span style={{width:14,height:14,border:"2px solid rgba(255,255,255,0.3)",borderTopColor:"white",borderRadius:"50%",animation:"spin 0.6s linear infinite",display:"inline-block"}}/>{t("Verifying...","جارٍ التحقق...")}</span>:t("Verify & Create Account","تحقق وأنشئ الحساب")}
+      </button>
+
+      <div style={{textAlign:"center",marginTop:14,fontSize:12,color:"var(--text3)"}}>
+        {t("Didn't receive the code?","لم تستلم الرمز؟")} <span onClick={()=>{const code=String(Math.floor(100000+Math.random()*900000));setF({...f,_verifyCode:code,_enteredCode:""});toast(`New code sent! (Demo: ${code})`,"info")}} style={{color:"var(--accent)",cursor:"pointer",fontWeight:600}}>{t("Resend","إعادة الإرسال")}</span>
+      </div>
     </div>}
   </Modal>);
 }
